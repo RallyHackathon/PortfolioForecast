@@ -9,23 +9,32 @@ Ext.define('CustomApp', {
         });
     },
     
-    throughputByProject: function(start, end) {
+    getSnapshots: function(config) {
         var workspaceOid = this.context.getWorkspace().ObjectID;
-
-        //Stories transitioned from <Accepted to >=Accepted
-        var forwardThroughput = new Deft.Deferred();
-        Ext.create('Rally.data.lookback.SnapshotStore', {
+        var deferred = new Deft.Deferred();
+        Ext.create('Rally.data.lookback.SnapshotStore', _.merge({
             autoLoad: true,
             context: {
                 workspace: '/workspace/' + workspaceOid
             },
             listeners: {
                 load: function(store, data, success) {
-                    forwardThroughput.resolve(_.pluck(data, 'raw'));
+                    deferred.resolve(_.pluck(data, 'raw'));
                 }
-            },
+            }
+        }, config));
+        
+        return deferred.getPromise();
+    },
+    
+    throughputByProject: function(start, end) {
+        var projectOid = this.context.getProject().ObjectID;
+
+        //Stories transitioned from <Accepted to >=Accepted
+        var forwardThroughput = this.getSnapshots({
             fetch: ['_ProjectHierarchy'],
             findConfig: {
+                "_ProjectHierarchy": projectOid,
                 "_TypeHierarchy": "HierarchicalRequirement",
 				"_PreviousValues.ScheduleState": {
 					"$exists": true,
@@ -42,19 +51,10 @@ Ext.define('CustomApp', {
         });
 
         //Stories transitioned from >=Accepted to <Accepted
-        var backwardThroughput = new Deft.Deferred();
-        Ext.create('Rally.data.lookback.SnapshotStore', {
-            autoLoad: true,
-            context: {
-                workspace: '/workspace/' + workspaceOid
-            },
-            listeners: {
-                load: function(store, data, success) {
-                    backwardThroughput.resolve(_.pluck(data, 'raw'));
-                }
-            },
+        var backwardThroughput = this.getSnapshots({
             fetch: ['_ProjectHierarchy'],
             findConfig: {
+                "_ProjectHierarchy": projectOid,
                 "_TypeHierarchy": "HierarchicalRequirement",
 				"_PreviousValues.ScheduleState": {
 					"$exists": true,
@@ -71,10 +71,7 @@ Ext.define('CustomApp', {
         });
 
         //Group into lookup table by project oid
-        return Deft.Promise.all([
-            forwardThroughput.getPromise(),
-            backwardThroughput.getPromise()
-        ]).then(function(results) {
+        return Deft.Promise.all([ forwardThroughput, backwardThroughput ]).then(function(results) {
             var forward = results[0];
             var backward = results[1];
             var throughput = {};
