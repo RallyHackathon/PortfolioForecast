@@ -1,9 +1,35 @@
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
-    items:{ html:'<a href="https://help.rallydev.com/apps/2.0rc2/doc/">App SDK 2.0rc2 Docs</a>'},
+     items: [
+       {
+            xtype: 'datepicker',
+            id: 'dateFrom',
+            itemId: 'dateFrom',
+            //setValue: function(){ return '2014-01-01'},
+            handler: function(picker, date) {
+                // do something with the selected date
+                //Rally.getApp().dateFrom = date;
+            }
+       },
+         {
+            xtype: 'datepicker',
+            id: 'dateTo',
+            itemId: 'dateTo',
+            handler: function(picker, date) {
+                // do something with the selected date
+                //Rally.getApp().dateTo = date;
+                Rally.getApp().loadPortfolioItems();
+            }
+       }
+
+    ],
+
     launch: function() {
         //Last 3 months
+        Ext.getCmp('dateFrom').setValue(new Date(2014,3,1)); //@todo configure, set dynamically
+        Ext.getCmp('dateTo').setValue(new Date(2014,10,1));
+        
         this.throughputByProject('2014-03', '2014-06').then(function(lookup) {
             console.log(lookup);
         });
@@ -28,13 +54,10 @@ Ext.define('CustomApp', {
     },
     
     throughputByProject: function(start, end) {
-        var projectOid = this.context.getProject().ObjectID;
-
         //Stories transitioned from <Accepted to >=Accepted
         var forwardThroughput = this.getSnapshots({
             fetch: ['_ProjectHierarchy'],
             findConfig: {
-                "_ProjectHierarchy": projectOid,
                 "_TypeHierarchy": "HierarchicalRequirement",
 				"_PreviousValues.ScheduleState": {
 					"$exists": true,
@@ -54,7 +77,6 @@ Ext.define('CustomApp', {
         var backwardThroughput = this.getSnapshots({
             fetch: ['_ProjectHierarchy'],
             findConfig: {
-                "_ProjectHierarchy": projectOid,
                 "_TypeHierarchy": "HierarchicalRequirement",
 				"_PreviousValues.ScheduleState": {
 					"$exists": true,
@@ -93,6 +115,27 @@ Ext.define('CustomApp', {
             });
             
             return throughput;
+        });
+    },
+
+    loadPortfolioItems: function() {
+        var workspaceOid = this.context.getWorkspace().ObjectID;
+        this.add(
+            {
+             xtype: 'rallyportfoliotree',
+             //@todo: parameterize PI type
+             topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
+             topLevelStoreConfig: {
+                filters: [{
+                    property: 'PlannedStartDate',
+                    operator: '>',
+                    value: Ext.Date.format(Ext.getCmp('dateFrom').getValue(), "Y-m-d")
+                }, {
+                    property: 'PlannedEndDate',
+                    operator: '<',
+                    value:Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d")
+                }]
+            }
         });
     }
 });
