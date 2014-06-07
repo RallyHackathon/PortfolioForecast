@@ -83,8 +83,8 @@ Ext.define('CustomApp', {
                         });
 
                         if (portfolioItem.data.AtRisk) {
-                            console.log("FEATURE IS AT RISK!!!");
-                            console.log(portfolioItem.data);
+                            var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
+                            Ext.get(piLink[0]).addCls('atRisk');
                         }
                     });
                 });
@@ -206,7 +206,7 @@ Ext.define('CustomApp', {
         var dateTo = this.getDateTo();
         var deferred = new Deft.Deferred();
 
-        this.add(
+        this.portfolioTree = this.add(
             {
                 xtype: 'rallyportfoliotree',
                 id: 'portfoliotree',
