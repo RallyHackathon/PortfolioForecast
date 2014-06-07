@@ -52,7 +52,8 @@ Ext.define('CustomApp', {
                         var startOn = Ext.Date.format(new Date(), "Y-m-d");
                         var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
 
-                        //TODO - what if endBefore < startOn?
+                        //If endBefore < startOn, we need Infinity throughput to finish on time, so those
+                        //features will still display as "at risk" (since we already blew the planned end date)
                         var timeline = new Lumenize.Timeline({
                             startOn: startOn,
                             endBefore: endBefore,
@@ -88,14 +89,28 @@ Ext.define('CustomApp', {
 
                             var table = '';
                             _.each(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
-                                table += '<tr><td>' + project + '</td><td>' + requiredThroughput + '</td><td>' + historicalThroughput[project] + '</td></tr>';
+                                var actualThroughput = historicalThroughput[project];
+                                table += [
+                                    '<tr class="', (requiredThroughput > actualThroughput ? 'atRisk' : 'notAtRisk') ,'">',
+                                        '<td>', project, '</td>',
+                                        '<td>', requiredThroughput.toFixed(2), '</td>',
+                                        '<td>', actualThroughput.toFixed(2), '</td>',
+                                    '</tr>'
+                                ].join('');
                             });
 
-                            table = '<tr><th>Project</th><th>Stories/day (needed)</th><th>Stories/day (actual)</th></tr>' + table;
+                            table = [
+                                '<tr>',
+                                    '<th>Project</th>',
+                                    '<th>Stories/day (needed)</th>',
+                                    '<th>Stories/day (actual)</th>',
+                                '</tr>',
+                                table
+                            ].join('');
                             
                             Ext.create('Rally.ui.tooltip.ToolTip', {
                                 target : Ext.get(piLink[0]),
-                                html: '<table>' + table + '</table>'
+                                html: '<table class="atRiskProjectDetail">' + table + '</table>'
                             });
                         }
                     });
@@ -223,6 +238,7 @@ Ext.define('CustomApp', {
                 xtype: 'rallyportfoliotree',
                 id: 'portfoliotree',
                 itemId: 'portfoliotree',
+                enableDragAndDrop: false,
                 //@todo: parameterize PI type
                 topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
                 topLevelStoreConfig: {
