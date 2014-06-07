@@ -21,7 +21,74 @@ Ext.define('CustomApp', {
             handler: function(picker, date) {
                 // do something with the selected date
                 //Rally.getApp().dateTo = date;
-                Rally.getApp().loadPortfolioItems();
+                var app = Rally.getApp();
+
+                var pisPromise = app.loadPortfolioItems();
+
+                // Get all currently unaccepted stories associated with a feature
+                var storiesPromise = app.getSnapshots({
+                    fetch: ['_ProjectHierarchy', '_ItemHierarchy'],
+                    findConfig: {
+                        "_TypeHierarchy": "HierarchicalRequirement",
+                        "__At": "current",
+                        "ScheduleState": {
+                            "$lt": "Accepted"
+                        },
+                        "Feature": {
+                            "$exists": true
+                        }
+                    }
+                });
+
+                var throughputPromise = app.throughputByProject(app.getDateFrom(), app.getDateTo());
+
+                Deft.Promise.all([ pisPromise, storiesPromise, throughputPromise ]).then(function(result) {
+                    var store = result[0];
+                    var stories = result[1];
+                    var historicalThroughput = result[2];
+
+                    store.each(function(portfolioItem) {
+                        debugger;
+                        var objectId = portfolioItem.data.ObjectID;
+                        var startOn = Ext.Date.format(new Date(), "Y-m-d");
+                        var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
+
+                        //TODO - what if endBefore < startOn?
+                        var timeline = new Lumenize.Timeline({
+                            startOn: startOn,
+                            endBefore: endBefore,
+                            granularity: Lumenize.Time.DAY
+                        });
+                        var workdaysRemaining = timeline.getAll().length;
+
+                        portfolioItem.data.RequiredThroughputByProject = {};
+
+
+                        //TODO - optimize later
+                        //Count stories remaining by project id
+                        _.each(stories, function(story) {
+                            if (story._ItemHierarchy.indexOf(objectId) >= 0) {
+                                portfolioItem.data.RequiredThroughputByProject[story.Project] = portfolioItem.data.RequiredThroughputByProject[story.Project] || 0
+                                portfolioItem.data.RequiredThroughputByProject[story.Project]++
+                            }
+                        });
+
+                        //Normalize story count by workdays remaining
+                        portfolioItem.data.RequiredThroughputByProject = _.transform(portfolioItem.data.RequiredThroughputByProject, function(result, count, project) {
+                            result[project] = count/workdaysRemaining;
+                        });
+
+                        //Determine if project is at risk (required throughput > historical throughput)
+                        portfolioItem.data.AtRisk = _.any(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
+                            return requiredThroughput > historicalThroughput[project];
+                        });
+
+                        if (portfolioItem.data.AtRisk) {
+                            console.log("FEATURE IS AT RISK!!!");
+                            console.log(portfolioItem.data);
+                        }
+                    });
+                });
             }
         }
     ],
@@ -36,6 +103,7 @@ Ext.define('CustomApp', {
         var workspaceOid = this.context.getWorkspace().ObjectID;
         var deferred = new Deft.Deferred();
         Ext.create('Rally.data.lookback.SnapshotStore', _.merge({
+            // TODO - account for > 20k results
             autoLoad: true,
             context: {
                 workspace: '/workspace/' + workspaceOid
@@ -125,10 +193,19 @@ Ext.define('CustomApp', {
         });
     },
 
+    getDateFrom: function() {
+        return Ext.Date.format(Ext.getCmp('dateFrom').getValue(), "Y-m-d");
+    },
+
+    getDateTo: function() {
+        return Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d");
+    },
+
     loadPortfolioItems: function() {
         var workspaceOid = this.context.getWorkspace().ObjectID;
-        var dateFrom = Ext.Date.format(Ext.getCmp('dateFrom').getValue(), "Y-m-d");
-        var dateTo = Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d");
+        var dateFrom = this.getDateFrom();
+        var dateTo = this.getDateTo();
+        var deferred = new Deft.Deferred();
 
         this.add(
             {
@@ -150,12 +227,15 @@ Ext.define('CustomApp', {
                     property: 'DirectChildrenCount', //Only show PIs that have children
                     operator: '>',
                     value: 0
-                }]
+                }],
+                listeners: {
+                    refresh: function(store) {
+                        deferred.resolve(store);
+                    }
+                }
             }
         });
 
-        this.throughputByProject(dateFrom, dateTo).then(function(lookup) {
-            console.log(lookup);
-        });
+        return deferred.getPromise();
     }
 });
