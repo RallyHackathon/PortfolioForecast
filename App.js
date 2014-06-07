@@ -59,17 +59,17 @@ Ext.define('CustomApp', {
             fetch: ['_ProjectHierarchy'],
             findConfig: {
                 "_TypeHierarchy": "HierarchicalRequirement",
-				"_PreviousValues.ScheduleState": {
-					"$exists": true,
-					"$lt": "Accepted"
-				},
-				"ScheduleState": {
+                "_PreviousValues.ScheduleState": {
+                    "$exists": true,
+                    "$lt": "Accepted"
+                },
+                "ScheduleState": {
                     "$gte": "Accepted"
-				},
-				"_ValidFrom": {
+                },
+                "_ValidFrom": {
                     "$lt": end,
                     "$gte": start
-				}
+                }
             }
         });
 
@@ -78,17 +78,17 @@ Ext.define('CustomApp', {
             fetch: ['_ProjectHierarchy'],
             findConfig: {
                 "_TypeHierarchy": "HierarchicalRequirement",
-				"_PreviousValues.ScheduleState": {
-					"$exists": true,
-					"$gte": "Accepted"
-				},
-				"ScheduleState": {
+                "_PreviousValues.ScheduleState": {
+                    "$exists": true,
+                    "$gte": "Accepted"
+                },
+                "ScheduleState": {
                     "$lt": "Accepted"
-				},
-				"_ValidFrom": {
+                },
+                "_ValidFrom": {
                     "$lt": end,
                     "$gte": start
-				}
+                }
             }
         });
 
@@ -122,10 +122,12 @@ Ext.define('CustomApp', {
         var workspaceOid = this.context.getWorkspace().ObjectID;
         this.add(
             {
-             xtype: 'rallyportfoliotree',
-             //@todo: parameterize PI type
-             topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
-             topLevelStoreConfig: {
+                xtype: 'rallyportfoliotree',
+                id: 'portfoliotree',
+                itemId: 'portfoliotree',
+                //@todo: parameterize PI type
+                topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
+                topLevelStoreConfig: {
                 filters: [{
                     property: 'PlannedStartDate',
                     operator: '>',
@@ -133,7 +135,11 @@ Ext.define('CustomApp', {
                 }, {
                     property: 'PlannedEndDate',
                     operator: '<',
-                    value:Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d")
+                    value: Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d")
+                }, {
+                    property: 'DirectChildrenCount',
+                    operator: '>',
+                    value: 0
                 }]
             }
         });
