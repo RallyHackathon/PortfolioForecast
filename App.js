@@ -1,24 +1,28 @@
 var Lumenize = require('./lumenize')
 
+var NOW = new Date();
+
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
     items: [
         {
             xtype: 'fieldset',
-            title: 'Historical Throughput',
+            title: 'Portfolio items starting and ending between',
             items: [
                 {
                     xtype: 'datefield',
-                    id: 'dateFrom',
-                    itemId: 'dateFrom',
-                    fieldLabel: 'Start'
+                    id: 'portfolioItemsStart',
+                    itemId: 'portfolioItemsStart',
+                    fieldLabel: 'Start',
+                    value: (new Lumenize.Time(NOW)).add(-3, Lumenize.Time.MONTH).getJSDate('UTC') // 3 months ago
                 },
                 {
                     xtype: 'datefield',
-                    id: 'dateTo',
-                    itemId: 'dateTo',
+                    id: 'portfolioItemsEnd',
+                    itemId: 'portfolioItemsEnd',
                     fieldLabel: 'End',
+                    value: (new Lumenize.Time(NOW)).add(3, Lumenize.Time.MONTH).getJSDate('UTC'), // 3 months from now
                     listeners: {
                         change: function() {
                             var app = Rally.getApp();
@@ -29,8 +33,33 @@ Ext.define('CustomApp', {
                     }
                 }
             ]
+        },
+        {
+            xtype: 'fieldset',
+            title: 'Sample historical throughput between',
+            items: [
+                {
+                    xtype: 'datefield',
+                    id: 'historicalThroughputStart',
+                    itemId: 'historicalThroughputStart',
+                    fieldLabel: 'Start',
+                    maxValue: NOW,
+                    value: (new Lumenize.Time(NOW)).add(-3, Lumenize.Time.MONTH).getJSDate('UTC')
+                },
+                {
+                    xtype: 'datefield',
+                    id: 'historicalThroughputEnd',
+                    itemId: 'historicalThroughputEnd',
+                    fieldLabel: 'End',
+                    maxValue: NOW,
+                    value: NOW
+                }
+            ]
         }
     ],
+
+    launch: function() {
+    },
 
     _onDateSelected: function() {
         var app = this;
@@ -51,7 +80,7 @@ Ext.define('CustomApp', {
             }
         });
 
-        var throughputPromise = app.throughputByProject(app.getDateFrom(), app.getDateTo());
+        var throughputPromise = app.throughputByProject();
 
         Deft.Promise.all([ pisPromise, storiesPromise, throughputPromise ]).then(function(result) {
             var store = result[0];
@@ -134,30 +163,26 @@ Ext.define('CustomApp', {
     getProjectNamebyIds: function(ids) {
         var deferred = new Deft.Deferred();
         var filter;
-        //console.log(ids);
+
         _.each(ids, function(id){
             var filterItem = Ext.create('Rally.data.QueryFilter', 
-    			{
-    				property: 'ObjectID',
-    				operator: '=',
-    				value: id
-    			});
-    			
-          
+            {
+                property: 'ObjectID',
+                operator: '=',
+                value: id
+            });
+
             filter = filter ? filter.or(filterItem) : filterItem;
-        
         });
 
         Ext.create('Rally.data.WsapiDataStore', {
-			config: {
-				autoLoad: true,
-			
-				project: 12294896803, //execution //this.getContext().getProject().ObjectID,
-				limit: 'Infinity'
-			},
-			model: 'Project',												
-			filters: filter,						
-		    listeners: {
+            config: {
+                autoLoad: true,
+                limit: 'Infinity'
+            },
+            model: 'Project',
+            filters: filter,
+            listeners: {
                 load: function(store, data, success) {
                     var names = {};
                     _.each(data, function(project){
@@ -165,19 +190,11 @@ Ext.define('CustomApp', {
                     });
                     deferred.resolve(names);
                 }
-            },				
-			fetch: ['ObjectID,Name']
-		
-		});	
-		return deferred.getPromise();
-    },
+            },
+            fetch: ['ObjectID,Name']
+        });
 
-    launch: function() {
-        //Last 3 months, up to next 3 months
-        var now = new Lumenize.Time(new Date(), Lumenize.Time.MONTH);
-        var timezone = 'UTC';
-        Ext.getCmp('dateFrom').setValue(now.add(-3).getJSDate(timezone));
-        Ext.getCmp('dateTo').setValue(now.add(3).getJSDate(timezone));
+        return deferred.getPromise();
     },
     
     getSnapshots: function(config) {
@@ -195,11 +212,14 @@ Ext.define('CustomApp', {
                 }
             }
         }, config));
-        
+
         return deferred.getPromise();
     },
     
-    throughputByProject: function(start, end) {
+    throughputByProject: function() {
+        var start = Ext.Date.format(Ext.getCmp('historicalThroughputStart').getValue(), "Y-m-d");
+        var end = Ext.Date.format(Ext.getCmp('historicalThroughputEnd').getValue(), "Y-m-d");
+
         var timeline = new Lumenize.Timeline({
             startOn: start,
             endBefore: end,
@@ -258,7 +278,7 @@ Ext.define('CustomApp', {
                     throughput[projectOid]++;
                 });
             });
-            
+
             //Subtract backward throughput
             _.each(backward, function(snapshot) {
                 _.each(snapshot._ProjectHierarchy, function(projectOid) {
@@ -274,18 +294,10 @@ Ext.define('CustomApp', {
         });
     },
 
-    getDateFrom: function() {
-        return Ext.Date.format(Ext.getCmp('dateFrom').getValue(), "Y-m-d");
-    },
-
-    getDateTo: function() {
-        return Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d");
-    },
-
     loadPortfolioItems: function() {
         var workspaceOid = this.context.getWorkspace().ObjectID;
-        var dateFrom = this.getDateFrom();
-        var dateTo = this.getDateTo();
+        var portfolioItemsStart = Ext.Date.format(Ext.getCmp('portfolioItemsStart').getValue(), "Y-m-d");
+        var portfolioItemsEnd = Ext.Date.format(Ext.getCmp('portfolioItemsEnd').getValue(), "Y-m-d");
         var deferred = new Deft.Deferred();
 
         this.portfolioTree = this.add(
@@ -300,11 +312,11 @@ Ext.define('CustomApp', {
                 filters: [{
                     property: 'PlannedStartDate',
                     operator: '>',
-                    value: dateFrom
+                    value: portfolioItemsStart
                 }, {
                     property: 'PlannedEndDate',
                     operator: '<',
-                    value: dateTo
+                    value: portfolioItemsEnd
                 }, {
                     property: 'DirectChildrenCount', //Only show PIs that have children
                     operator: '>',
