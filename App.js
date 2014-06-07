@@ -5,122 +5,132 @@ Ext.define('CustomApp', {
     componentCls: 'app',
     items: [
         {
-            xtype: 'datepicker',
-            id: 'dateFrom',
-            itemId: 'dateFrom',
-            //setValue: function(){ return '2014-01-01'},
-            handler: function(picker, date) {
-                // do something with the selected date
-                //Rally.getApp().dateFrom = date;
-            }
-        },
-        {
-            xtype: 'datepicker',
-            id: 'dateTo',
-            itemId: 'dateTo',
-            handler: function(picker, date) {
-                // do something with the selected date
-                //Rally.getApp().dateTo = date;
-                var app = Rally.getApp();
-
-                var pisPromise = app.loadPortfolioItems();
-
-                // Get all currently unaccepted stories associated with a feature
-                var storiesPromise = app.getSnapshots({
-                    fetch: ['_ProjectHierarchy', '_ItemHierarchy'],
-                    findConfig: {
-                        "_TypeHierarchy": "HierarchicalRequirement",
-                        "__At": "current",
-                        "ScheduleState": {
-                            "$lt": "Accepted"
-                        },
-                        "Feature": {
-                            "$exists": true
+            xtype: 'fieldset',
+            title: 'Historical Throughput',
+            items: [
+                {
+                    xtype: 'datefield',
+                    id: 'dateFrom',
+                    itemId: 'dateFrom',
+                    fieldLabel: 'Start'
+                },
+                {
+                    xtype: 'datefield',
+                    id: 'dateTo',
+                    itemId: 'dateTo',
+                    fieldLabel: 'End',
+                    listeners: {
+                        change: function() {
+                            var app = Rally.getApp();
+                            if (app) {
+                                app._onDateSelected();
+                            }
                         }
+                    }
+                }
+            ]
+        }
+    ],
+
+    _onDateSelected: function() {
+        var app = this;
+        var pisPromise = app.loadPortfolioItems();
+
+        // Get all currently unaccepted stories associated with a feature
+        var storiesPromise = app.getSnapshots({
+            fetch: ['_ProjectHierarchy', '_ItemHierarchy'],
+            findConfig: {
+                "_TypeHierarchy": "HierarchicalRequirement",
+                "__At": "current",
+                "ScheduleState": {
+                    "$lt": "Accepted"
+                },
+                "Feature": {
+                    "$exists": true
+                }
+            }
+        });
+
+        var throughputPromise = app.throughputByProject(app.getDateFrom(), app.getDateTo());
+
+        Deft.Promise.all([ pisPromise, storiesPromise, throughputPromise ]).then(function(result) {
+            var store = result[0];
+            var stories = result[1];
+            var historicalThroughput = result[2];
+
+            store.each(function(portfolioItem) {
+                var objectId = portfolioItem.data.ObjectID;
+                var startOn = Ext.Date.format(new Date(), "Y-m-d");
+                var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
+
+                //If endBefore < startOn, we need Infinity throughput to finish on time, so those
+                //features will still display as "at risk" (since we already blew the planned end date)
+                var timeline = new Lumenize.Timeline({
+                    startOn: startOn,
+                    endBefore: endBefore,
+                    granularity: Lumenize.Time.DAY
+                });
+                var workdaysRemaining = timeline.getAll().length;
+
+                portfolioItem.data.Projects = {};
+
+                //TODO - optimize later
+                //Count stories remaining by project id
+                _.each(stories, function(story) {
+                    if (story._ItemHierarchy.indexOf(objectId) >= 0) {
+                        portfolioItem.data.Projects[story.Project] = portfolioItem.data.Projects[story.Project] || { count: 0 }
+                        portfolioItem.data.Projects[story.Project].count++
                     }
                 });
 
-                var throughputPromise = app.throughputByProject(app.getDateFrom(), app.getDateTo());
-
-                Deft.Promise.all([ pisPromise, storiesPromise, throughputPromise ]).then(function(result) {
-                    var store = result[0];
-                    var stories = result[1];
-                    var historicalThroughput = result[2];
-
-                    store.each(function(portfolioItem) {
-                        var objectId = portfolioItem.data.ObjectID;
-                        var startOn = Ext.Date.format(new Date(), "Y-m-d");
-                        var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
-
-                        //If endBefore < startOn, we need Infinity throughput to finish on time, so those
-                        //features will still display as "at risk" (since we already blew the planned end date)
-                        var timeline = new Lumenize.Timeline({
-                            startOn: startOn,
-                            endBefore: endBefore,
-                            granularity: Lumenize.Time.DAY
-                        });
-                        var workdaysRemaining = timeline.getAll().length;
-
-                        portfolioItem.data.RequiredThroughputByProject = {};
-
-
-                        //TODO - optimize later
-                        //Count stories remaining by project id
-                        _.each(stories, function(story) {
-                            if (story._ItemHierarchy.indexOf(objectId) >= 0) {
-                                portfolioItem.data.RequiredThroughputByProject[story.Project] = portfolioItem.data.RequiredThroughputByProject[story.Project] || 0
-                                portfolioItem.data.RequiredThroughputByProject[story.Project]++
-                            }
-                        });
-
-                        //Normalize story count by workdays remaining
-                        portfolioItem.data.RequiredThroughputByProject = _.transform(portfolioItem.data.RequiredThroughputByProject, function(result, count, project) {
-                            result[project] = count/workdaysRemaining;
-                        });
-
-                        //Determine if project is at risk (required throughput > historical throughput)
-                        portfolioItem.data.AtRisk = _.any(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
-                            return requiredThroughput > historicalThroughput[project];
-                        });
-
-                        if (portfolioItem.data.AtRisk) {
-                            var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
-                            Ext.get(piLink[0]).addCls('atRisk');
-
-                            app.getProjectNamebyIds(_.keys(portfolioItem.data.RequiredThroughputByProject)).then(function(names){
-                                var table = '';
-                                _.each(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
-                                    var actualThroughput = historicalThroughput[project];
-                                    table += [
-                                        '<tr class="', (requiredThroughput > actualThroughput ? 'atRisk' : 'notAtRisk') ,'">',
-                                            '<td>', names[project], '</td>',
-                                            '<td>', requiredThroughput.toFixed(2), '</td>',
-                                            '<td>', actualThroughput.toFixed(2), '</td>',
-                                        '</tr>'
-                                    ].join('');
-                                });
-
-                                table = [
-                                    '<tr>',
-                                        '<th>Project</th>',
-                                        '<th>Stories/day (needed)</th>',
-                                        '<th>Stories/day (actual)</th>',
-                                    '</tr>',
-                                    table
-                                ].join('');
-                                
-                                Ext.create('Rally.ui.tooltip.ToolTip', {
-                                    target : Ext.get(piLink[0]),
-                                    html: '<table>' + table + '</table>'
-                                });
-                            });
-                          
-                        }
-                    });
+                //Normalize story count by workdays remaining
+                _.each(portfolioItem.data.Projects, function(project, projectOid) {
+                    project.daysToCompletion = project.count * historicalThroughput[projectOid];
+                    project.atRisk = project.daysToCompletion > workdaysRemaining;
                 });
-            }
-        }
-    ],
+
+                //Determine if project is at risk (required throughput > historical throughput)
+                portfolioItem.data.AtRisk = _.any(portfolioItem.data.Projects, function(project) {
+                    return project.daysToCompletion > workdaysRemaining;
+                });
+
+                if (portfolioItem.data.AtRisk) {
+                    var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
+                    Ext.get(piLink[0]).addCls('atRisk');
+
+                    app.getProjectNamebyIds(_.keys(portfolioItem.data.Projects)).then(function(names){
+                        var table = '';
+                        _.each(portfolioItem.data.Projects, function(project, projectOid) {
+                            var actualThroughput = historicalThroughput[projectOid];
+                            table += [
+                                '<tr class="', (project.atRisk ? 'atRisk' : 'notAtRisk') ,'">',
+                                    '<td>', names[projectOid], '</td>',
+                                    '<td>', workdaysRemaining, '</td>',
+                                    '<td>', project.daysToCompletion.toFixed(2), '</td>',
+                                '</tr>'
+                            ].join('');
+                        });
+
+                        table = [
+                            '<tr>',
+                                '<th>Project</th>',
+                                '<th>Days left</th>',
+                                '<th>Days needed</th>',
+                            '</tr>',
+                            table
+                        ].join('');
+                        
+                        Ext.create('Rally.ui.tooltip.ToolTip', {
+                            target : Ext.get(piLink[0]),
+                            html: '<table>' + table + '</table>'
+                        });
+                    });
+                  
+                }
+            });
+        });
+    },
+
     getProjectNamebyIds: function(ids) {
         var deferred = new Deft.Deferred();
         var filter;
@@ -161,10 +171,13 @@ Ext.define('CustomApp', {
 		});	
 		return deferred.getPromise();
     },
+
     launch: function() {
-        //Last 3 months
-        Ext.getCmp('dateFrom').setValue(new Date(2014,3,1)); //@todo configure, set dynamically
-        Ext.getCmp('dateTo').setValue(new Date(2014,10,1));
+        //Last 3 months, up to next 3 months
+        var now = new Lumenize.Time(new Date(), Lumenize.Time.MONTH);
+        var timezone = 'UTC';
+        Ext.getCmp('dateFrom').setValue(now.add(-3).getJSDate(timezone));
+        Ext.getCmp('dateTo').setValue(now.add(3).getJSDate(timezone));
     },
     
     getSnapshots: function(config) {
