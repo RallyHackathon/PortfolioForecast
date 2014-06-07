@@ -87,38 +87,80 @@ Ext.define('CustomApp', {
                             var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
                             Ext.get(piLink[0]).addCls('atRisk');
 
-                            var table = '';
-                            _.each(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
-                                var actualThroughput = historicalThroughput[project];
-                                table += [
-                                    '<tr class="', (requiredThroughput > actualThroughput ? 'atRisk' : 'notAtRisk') ,'">',
-                                        '<td>', project, '</td>',
-                                        '<td>', requiredThroughput.toFixed(2), '</td>',
-                                        '<td>', actualThroughput.toFixed(2), '</td>',
-                                    '</tr>'
-                                ].join('');
-                            });
+                            app.getProjectNamebyIds(_.keys(portfolioItem.data.RequiredThroughputByProject)).then(function(names){
+                                var table = '';
+                                _.each(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
+                                    var actualThroughput = historicalThroughput[project];
+                                    table += [
+                                        '<tr class="', (requiredThroughput > actualThroughput ? 'atRisk' : 'notAtRisk') ,'">',
+                                            '<td>', names[project], '</td>',
+                                            '<td>', requiredThroughput.toFixed(2), '</td>',
+                                            '<td>', actualThroughput.toFixed(2), '</td>',
+                                        '</tr>'
+                                    ].join('');
+                                });
 
-                            table = [
-                                '<tr>',
-                                    '<th>Project</th>',
-                                    '<th>Stories/day (needed)</th>',
-                                    '<th>Stories/day (actual)</th>',
-                                '</tr>',
-                                table
-                            ].join('');
-                            
-                            Ext.create('Rally.ui.tooltip.ToolTip', {
-                                target : Ext.get(piLink[0]),
-                                html: '<table class="atRiskProjectDetail">' + table + '</table>'
+                                table = [
+                                    '<tr>',
+                                        '<th>Project</th>',
+                                        '<th>Stories/day (needed)</th>',
+                                        '<th>Stories/day (actual)</th>',
+                                    '</tr>',
+                                    table
+                                ].join('');
+                                
+                                Ext.create('Rally.ui.tooltip.ToolTip', {
+                                    target : Ext.get(piLink[0]),
+                                    html: '<table>' + table + '</table>'
+                                });
                             });
+                          
                         }
                     });
                 });
             }
         }
     ],
+    getProjectNamebyIds: function(ids) {
+        var deferred = new Deft.Deferred();
+        var filter;
+        //console.log(ids);
+        _.each(ids, function(id){
+            var filterItem = Ext.create('Rally.data.QueryFilter', 
+    			{
+    				property: 'ObjectID',
+    				operator: '=',
+    				value: id
+    			});
+    			
+          
+            filter = filter ? filter.or(filterItem) : filterItem;
+        
+        });
 
+        Ext.create('Rally.data.WsapiDataStore', {
+			config: {
+				autoLoad: true,
+			
+				project: 12294896803, //execution //this.getContext().getProject().ObjectID,
+				limit: 'Infinity'
+			},
+			model: 'Project',												
+			filters: filter,						
+		    listeners: {
+                load: function(store, data, success) {
+                    var names = {};
+                    _.each(data, function(project){
+                        names[project.data.ObjectID] = project.data.Name;
+                    });
+                    deferred.resolve(names);
+                }
+            },				
+			fetch: ['ObjectID,Name']
+		
+		});	
+		return deferred.getPromise();
+    },
     launch: function() {
         //Last 3 months
         Ext.getCmp('dateFrom').setValue(new Date(2014,3,1)); //@todo configure, set dynamically
