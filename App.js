@@ -1,8 +1,10 @@
+var Lumenize = require('./lumenize')
+
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
-     items: [
-       {
+    items: [
+        {
             xtype: 'datepicker',
             id: 'dateFrom',
             itemId: 'dateFrom',
@@ -11,8 +13,8 @@ Ext.define('CustomApp', {
                 // do something with the selected date
                 //Rally.getApp().dateFrom = date;
             }
-       },
-         {
+        },
+        {
             xtype: 'datepicker',
             id: 'dateTo',
             itemId: 'dateTo',
@@ -21,18 +23,13 @@ Ext.define('CustomApp', {
                 //Rally.getApp().dateTo = date;
                 Rally.getApp().loadPortfolioItems();
             }
-       }
-
+        }
     ],
 
     launch: function() {
         //Last 3 months
         Ext.getCmp('dateFrom').setValue(new Date(2014,3,1)); //@todo configure, set dynamically
         Ext.getCmp('dateTo').setValue(new Date(2014,10,1));
-        
-        this.throughputByProject('2014-03', '2014-06').then(function(lookup) {
-            console.log(lookup);
-        });
     },
     
     getSnapshots: function(config) {
@@ -54,6 +51,13 @@ Ext.define('CustomApp', {
     },
     
     throughputByProject: function(start, end) {
+        var timeline = new Lumenize.Timeline({
+            startOn: start,
+            endBefore: end,
+            granularity: Lumenize.Time.DAY
+        });
+        var workdays = timeline.getAll().length;
+
         //Stories transitioned from <Accepted to >=Accepted
         var forwardThroughput = this.getSnapshots({
             fetch: ['_ProjectHierarchy'],
@@ -113,13 +117,19 @@ Ext.define('CustomApp', {
                     throughput[projectOid]--;
                 });
             });
-            
-            return throughput;
+
+            //Normalize the throughput by workday
+            return _.transform(throughput, function(result, num, key) {
+                result[key] = num/workdays;
+            });
         });
     },
 
     loadPortfolioItems: function() {
         var workspaceOid = this.context.getWorkspace().ObjectID;
+        var dateFrom = Ext.Date.format(Ext.getCmp('dateFrom').getValue(), "Y-m-d");
+        var dateTo = Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d");
+
         this.add(
             {
                 xtype: 'rallyportfoliotree',
@@ -131,17 +141,21 @@ Ext.define('CustomApp', {
                 filters: [{
                     property: 'PlannedStartDate',
                     operator: '>',
-                    value: Ext.Date.format(Ext.getCmp('dateFrom').getValue(), "Y-m-d")
+                    value: dateFrom
                 }, {
                     property: 'PlannedEndDate',
                     operator: '<',
-                    value: Ext.Date.format(Ext.getCmp('dateTo').getValue(), "Y-m-d")
+                    value: dateTo
                 }, {
-                    property: 'DirectChildrenCount',
+                    property: 'DirectChildrenCount', //Only show PIs that have children
                     operator: '>',
                     value: 0
                 }]
             }
+        });
+
+        this.throughputByProject(dateFrom, dateTo).then(function(lookup) {
+            console.log(lookup);
         });
     }
 });

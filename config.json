@@ -4,7 +4,8 @@
    "server": "https://rally1.rallydev.com",
    "sdk": "2.0rc3",
    "javascript": [
-      "App.js"
+      "App.js",
+      "https://storage.googleapis.com/versions.lumenize.com/v0.7.2/Lumenize-min.js"
    ],
    "css": [
       "app.css"
