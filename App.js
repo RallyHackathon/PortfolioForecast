@@ -48,7 +48,6 @@ Ext.define('CustomApp', {
                     var historicalThroughput = result[2];
 
                     store.each(function(portfolioItem) {
-                        debugger;
                         var objectId = portfolioItem.data.ObjectID;
                         var startOn = Ext.Date.format(new Date(), "Y-m-d");
                         var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
