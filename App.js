@@ -85,10 +85,17 @@ Ext.define('CustomApp', {
                         if (portfolioItem.data.AtRisk) {
                             var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
                             Ext.get(piLink[0]).addCls('atRisk');
+
+                            var table = '';
+                            _.each(portfolioItem.data.RequiredThroughputByProject, function(requiredThroughput, project) {
+                                table += '<tr><td>' + project + '</td><td>' + requiredThroughput + '</td><td>' + historicalThroughput[project] + '</td></tr>';
+                            });
+
+                            table = '<tr><th>Project</th><th>Stories/day (needed)</th><th>Stories/day (actual)</th></tr>' + table;
                             
                             Ext.create('Rally.ui.tooltip.ToolTip', {
                                 target : Ext.get(piLink[0]),
-                                html: '<p><strong>This is a tooltip</strong></p>'
+                                html: '<table>' + table + '</table>'
                             });
                         }
                     });
