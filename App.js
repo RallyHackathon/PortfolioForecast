@@ -1,12 +1,29 @@
 var Lumenize = require('./lumenize')
-
 var NOW = new Date();
+
+Ext.define('Rally.ui.tree.PortfolioForecastTree', {
+    extend: 'Rally.ui.tree.PortfolioTree',
+    alias: 'widget.portfolioforecasttree',
+
+    handleParentItemStoreLoad: function(store, records) {
+        this.callParent(arguments);
+    },
+
+    handleChildItemStoreLoad: function(store, records, parentTreeItem) {
+        this.callParent(arguments);
+    },
+
+    treeItemConfigForRecordFn: function(record) {
+        return { xtype: 'rallytreeitem' }
+    }
+});
 
 Ext.define('CustomApp', {
     extend: 'Rally.app.App',
     componentCls: 'app',
-    items: [
-        {
+
+    launch: function() {
+        this.add({
             xtype: 'fieldset',
             title: 'Portfolio items starting and ending between',
             items: [
@@ -15,7 +32,10 @@ Ext.define('CustomApp', {
                     id: 'portfolioItemsStart',
                     itemId: 'portfolioItemsStart',
                     fieldLabel: 'Start',
-                    value: (new Lumenize.Time(NOW)).add(-3, Lumenize.Time.MONTH).getJSDate('UTC') // 3 months ago
+                    value: (new Lumenize.Time(NOW)).add(-3, Lumenize.Time.MONTH).getJSDate('UTC'), // 3 months ago
+                    listeners: {
+                        change: Ext.bind(this._onDateSelected, this)
+                    }
                 },
                 {
                     xtype: 'datefield',
@@ -24,17 +44,13 @@ Ext.define('CustomApp', {
                     fieldLabel: 'End',
                     value: (new Lumenize.Time(NOW)).add(3, Lumenize.Time.MONTH).getJSDate('UTC'), // 3 months from now
                     listeners: {
-                        change: function() {
-                            var app = Rally.getApp();
-                            if (app) {
-                                app._onDateSelected();
-                            }
-                        }
+                        change: Ext.bind(this._onDateSelected, this)
                     }
                 }
             ]
-        },
-        {
+        });
+
+        this.add({
             xtype: 'fieldset',
             title: 'Sample historical throughput between',
             items: [
@@ -55,10 +71,9 @@ Ext.define('CustomApp', {
                     value: NOW
                 }
             ]
-        }
-    ],
+        });
 
-    launch: function() {
+        this._onDateSelected();
     },
 
     _onDateSelected: function() {
@@ -123,39 +138,39 @@ Ext.define('CustomApp', {
                     return project.daysToCompletion > workdaysRemaining;
                 });
 
+                var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
+
                 if (portfolioItem.data.AtRisk) {
-                    var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
                     Ext.get(piLink[0]).addCls('atRisk');
-
-                    app.getProjectNamebyIds(_.keys(portfolioItem.data.Projects)).then(function(names){
-                        var table = '';
-                        _.each(portfolioItem.data.Projects, function(project, projectOid) {
-                            var actualThroughput = historicalThroughput[projectOid];
-                            table += [
-                                '<tr class="', (project.atRisk ? 'atRisk' : 'notAtRisk') ,'">',
-                                    '<td>', names[projectOid], '</td>',
-                                    '<td>', workdaysRemaining, '</td>',
-                                    '<td>', project.daysToCompletion.toFixed(2), '</td>',
-                                '</tr>'
-                            ].join('');
-                        });
-
-                        table = [
-                            '<tr>',
-                                '<th>Project</th>',
-                                '<th>Days left</th>',
-                                '<th>Days needed</th>',
-                            '</tr>',
-                            table
-                        ].join('');
-                        
-                        Ext.create('Rally.ui.tooltip.ToolTip', {
-                            target : Ext.get(piLink[0]),
-                            html: '<table>' + table + '</table>'
-                        });
-                    });
-                  
                 }
+
+                app.getProjectNamebyIds(_.keys(portfolioItem.data.Projects)).then(function(names){
+                    var table = '';
+                    _.each(portfolioItem.data.Projects, function(project, projectOid) {
+                        var actualThroughput = historicalThroughput[projectOid];
+                        table += [
+                            '<tr class="', (project.atRisk ? 'atRisk' : 'notAtRisk') ,'">',
+                                '<td>', names[projectOid], '</td>',
+                                '<td>', workdaysRemaining, '</td>',
+                                '<td>', project.daysToCompletion.toFixed(2), '</td>',
+                            '</tr>'
+                        ].join('');
+                    });
+
+                    table = [
+                        '<tr>',
+                            '<th>Project</th>',
+                            '<th>Days left</th>',
+                            '<th>Days needed</th>',
+                        '</tr>',
+                        table
+                    ].join('');
+                    
+                    Ext.create('Rally.ui.tooltip.ToolTip', {
+                        target : Ext.get(piLink[0]),
+                        html: '<table>' + table + '</table>'
+                    });
+                });
             });
         });
     },
@@ -300,15 +315,14 @@ Ext.define('CustomApp', {
         var portfolioItemsEnd = Ext.Date.format(Ext.getCmp('portfolioItemsEnd').getValue(), "Y-m-d");
         var deferred = new Deft.Deferred();
 
-        this.portfolioTree = this.add(
-            {
-                xtype: 'rallyportfoliotree',
-                id: 'portfoliotree',
-                itemId: 'portfoliotree',
-                enableDragAndDrop: false,
-                //@todo: parameterize PI type
-                topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
-                topLevelStoreConfig: {
+        this.portfolioTree = this.add({
+            xtype: 'portfolioforecasttree',
+            id: 'portfoliotree',
+            itemId: 'portfoliotree',
+            enableDragAndDrop: false,
+            //@todo: parameterize PI type
+            topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
+            topLevelStoreConfig: {
                 filters: [{
                     property: 'PlannedStartDate',
                     operator: '>',
@@ -321,6 +335,10 @@ Ext.define('CustomApp', {
                     property: 'DirectChildrenCount', //Only show PIs that have children
                     operator: '>',
                     value: 0
+                }, {
+                    property: 'PercentDoneByStoryCount', //Do not show completed PIs
+                    operator: '<',
+                    value: 1
                 }],
                 listeners: {
                     refresh: function(store) {
