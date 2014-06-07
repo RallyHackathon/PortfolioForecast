@@ -85,6 +85,11 @@ Ext.define('CustomApp', {
                         if (portfolioItem.data.AtRisk) {
                             var piLink = Ext.dom.Query.select('a[href*=' + portfolioItem.data.ObjectID +']');
                             Ext.get(piLink[0]).addCls('atRisk');
+                            
+                            Ext.create('Rally.ui.tooltip.ToolTip', {
+                                target : Ext.get(piLink[0]),
+                                html: '<p><strong>This is a tooltip</strong></p>'
+                            });
                         }
                     });
                 });
