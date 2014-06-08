@@ -218,6 +218,19 @@ Ext.define('CustomApp', {
             title: 'Portfolio items starting and ending between',
             items: [
                 {
+                    xtype: 'fieldcontainer',
+                    fieldLabel: 'Type',
+                    items: [{
+                        xtype: 'rallyportfolioitemtypecombobox',
+                        id: 'portfolioItemType',
+                        itemId: 'portfolioItemType',
+                        hideLabel: true,
+                        listeners: {
+                            change: Ext.bind(this.loadPortfolioItems, this)
+                        }
+                    }]
+                },
+                {
                     xtype: 'datefield',
                     id: 'portfolioItemsStart',
                     itemId: 'portfolioItemsStart',
@@ -378,6 +391,11 @@ Ext.define('CustomApp', {
         var workspaceOid = this.context.getWorkspace().ObjectID;
         var portfolioItemsStart = Ext.Date.format(Ext.getCmp('portfolioItemsStart').getValue(), "Y-m-d");
         var portfolioItemsEnd = Ext.Date.format(Ext.getCmp('portfolioItemsEnd').getValue(), "Y-m-d");
+        var portfolioItemType = Ext.getCmp('portfolioItemType').getRawValue();
+
+        if (portfolioItemType == null) {
+            return;
+        }
 
         this.historicalThroughputByProject.then(Ext.bind(function(historicalThroughputByProject) {
             //TODO - update and refresh existing tree
@@ -387,8 +405,7 @@ Ext.define('CustomApp', {
                 itemId: 'portfoliotree',
                 enableDragAndDrop: false,
                 historicalThroughputByProject: historicalThroughputByProject,
-                //@todo: parameterize PI type
-                topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/initiative' : 'portfolioitem/epic',
+                topLevelModel: 'portfolioitem/' + portfolioItemType.toLowerCase(),
                 topLevelStoreConfig: {
                     filters: [{
                         property: 'PlannedStartDate',
