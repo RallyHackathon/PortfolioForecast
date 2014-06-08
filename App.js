@@ -10,7 +10,9 @@ Ext.define('Rally.ui.tree.PortfolioForecastTreeItem', {
 
         return Ext.create('Ext.XTemplate',
             '<div class="textContent ellipses">{[this.getFormattedId()]} {[this.getSeparator()]}{Name}</div>',
-            '<div class="textContent {[values.AtRisk ? "atRisk" : "notAtRisk"]}">({[values.DaysToCompletion.toFixed(1)]} days needed/{WorkdaysRemaining} days left)</div>',
+            '<div class="textContent {[this.getClass()]}">',
+                '{[this.getSummary()]}',
+            '</div>',
             '<div class="rightSide">',
                 '{[this.getPercentDone()]}',
             '</div>',
@@ -25,6 +27,20 @@ Ext.define('Rally.ui.tree.PortfolioForecastTreeItem', {
                 },
                 getSeparator: function() {
                     return this.getFormattedId() ? '- ' : '';
+                },
+                getClass: function() {
+                    var record = me.getRecord();
+                    return record.data.AtRisk ? 'atRisk' : 'notAtRisk';
+                },
+                getSummary: function() {
+                    var record = me.getRecord();
+                    var daysToCompletion = record.data.DaysToCompletion;
+                    var workdaysRemaining = record.data.WorkdaysRemaining;
+                    if (daysToCompletion != null && workdaysRemaining != null) {
+                        return '(' + daysToCompletion.toFixed(1) + ' days needed / ' + workdaysRemaining + ' days left)';
+                    } else {
+                        return '';
+                    }
                 }
             }
         );
@@ -63,22 +79,30 @@ Ext.define('Rally.ui.tree.PortfolioForecastTree', {
         }
     },
 
+    canExpandItem: function(record) {
+        return !!_.keys(record.data.Projects).length;
+    },
+
     computePortfolioItemRisk: function(store) {
         var storiesRemainingByFeatureAndProject = this.storiesRemainingByFeatureAndProject;
         var historicalThroughput = this.config.historicalThroughputByProject;
         store.each(function(portfolioItem) {
             var objectId = portfolioItem.data.ObjectID;
-            var startOn = Ext.Date.format(new Date(), "Y-m-d");
-            var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
+            var workdaysRemaining = '?';
 
-            //If endBefore < startOn, we need Infinity throughput to finish on time, so those
-            //features will still display as "at risk" (since we already blew the planned end date)
-            var timeline = new Lumenize.Timeline({
-                startOn: startOn,
-                endBefore: endBefore,
-                granularity: Lumenize.Time.DAY
-            });
-            var workdaysRemaining = timeline.getAll().length;
+            if (portfolioItem.data.PlannedEndDate) {
+                var startOn = Ext.Date.format(new Date(), "Y-m-d");
+                var endBefore = Ext.Date.format(portfolioItem.data.PlannedEndDate, "Y-m-d");
+
+                //If endBefore < startOn, we need Infinity throughput to finish on time, so those
+                //features will still display as "at risk" (since we already blew the planned end date)
+                var timeline = new Lumenize.Timeline({
+                    startOn: startOn,
+                    endBefore: endBefore,
+                    granularity: Lumenize.Time.DAY
+                });
+                var workdaysRemaining = timeline.getAll().length;
+            }
 
             portfolioItem.data.Projects = {};
 
@@ -89,6 +113,7 @@ Ext.define('Rally.ui.tree.PortfolioForecastTree', {
 
             //Normalize story count by workdays remaining
             _.each(portfolioItem.data.Projects, function(project, projectOid) {
+                project.WorkdaysRemaining = workdaysRemaining;
                 project.DaysToCompletion = project.StoriesRemaining * historicalThroughput[projectOid];
                 project.AtRisk = project.DaysToCompletion > workdaysRemaining;
             });
@@ -363,7 +388,7 @@ Ext.define('CustomApp', {
                 enableDragAndDrop: false,
                 historicalThroughputByProject: historicalThroughputByProject,
                 //@todo: parameterize PI type
-                topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/feature' : 'portfolioitem/epic',
+                topLevelModel: workspaceOid == '41529001' ? 'portfolioitem/initiative' : 'portfolioitem/epic',
                 topLevelStoreConfig: {
                     filters: [{
                         property: 'PlannedStartDate',
@@ -374,7 +399,7 @@ Ext.define('CustomApp', {
                         operator: '<',
                         value: portfolioItemsEnd
                     }, {
-                        property: 'DirectChildrenCount', //Only show PIs that have children
+                        property: 'LeafStoryCount', //Only show PIs that have user stories
                         operator: '>',
                         value: 0
                     }, {
