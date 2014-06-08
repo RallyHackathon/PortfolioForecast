@@ -388,17 +388,18 @@ Ext.define('CustomApp', {
     },
 
     loadPortfolioItems: function() {
-        var workspaceOid = this.context.getWorkspace().ObjectID;
         var portfolioItemsStart = Ext.Date.format(Ext.getCmp('portfolioItemsStart').getValue(), "Y-m-d");
         var portfolioItemsEnd = Ext.Date.format(Ext.getCmp('portfolioItemsEnd').getValue(), "Y-m-d");
         var portfolioItemType = Ext.getCmp('portfolioItemType').getRawValue();
 
-        if (portfolioItemType == null) {
+        if (!portfolioItemType) {
             return;
         }
 
         this.historicalThroughputByProject.then(Ext.bind(function(historicalThroughputByProject) {
-            //TODO - update and refresh existing tree
+            if (this.portfolioTree) {
+                this.remove(this.portfolioTree)
+            }
             this.portfolioTree = this.add({
                 xtype: 'portfolioforecasttree',
                 id: 'portfoliotree',
