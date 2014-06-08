@@ -9,8 +9,3 @@
 .notAtRisk {
     color: green !important;
 }
-
-.atRiskProjectDetail th,
-.atRiskProjectDetail td {
-	text-align: left;
-}
